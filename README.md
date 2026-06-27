@@ -44,7 +44,7 @@ Add the plugin to any step that runs `bazel` directly:
 steps:
   - command: bazel test //...
     plugins:
-      - aspect-build/setup-aspect-buildkite-plugin#19a9eb187ad1f1c65c1b6d64a7fc03589041c8ae: ~ # v2026.25.0
+      - aspect-build/setup-aspect#19a9eb187ad1f1c65c1b6d64a7fc03589041c8ae: ~ # v2026.25.0
 ```
 
 `aspect <task>` steps don't need the plugin (they self-configure), but it's
@@ -59,7 +59,7 @@ readability and let Renovate keep the SHA fresh:
 
 ```yaml
 plugins:
-  - aspect-build/setup-aspect-buildkite-plugin#19a9eb187ad1f1c65c1b6d64a7fc03589041c8ae: ~ # v2026.25.0
+  - aspect-build/setup-aspect#19a9eb187ad1f1c65c1b6d64a7fc03589041c8ae: ~ # v2026.25.0
 ```
 
 Find the latest SHA on the [Releases page](https://github.com/aspect-build/setup-aspect-buildkite-plugin/releases).

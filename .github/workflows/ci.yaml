@@ -30,7 +30,7 @@ jobs:
         # guidance), which the linter's version check would otherwise flag.
         run: |
           docker run --rm -v "$PWD:/plugin" buildkite/plugin-linter \
-            --id aspect-build/setup-aspect-buildkite-plugin --path /plugin --skip-invalid
+            --id aspect-build/setup-aspect --path /plugin --skip-invalid
 
   shellcheck:
     name: ":shell: Shellcheck"

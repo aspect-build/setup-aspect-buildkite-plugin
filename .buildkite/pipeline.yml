@@ -8,7 +8,7 @@ steps:
   - label: ":sparkles: Lint"
     plugins:
       - plugin-linter#v3.3.0:
-          id: aspect-build/setup-aspect-buildkite-plugin
+          id: aspect-build/setup-aspect
           # README examples pin to a commit SHA (our security guidance), which
           # the linter's "versions up-to-date" check flags as an invalid
           # version. skip-invalid keeps that a non-failure.
