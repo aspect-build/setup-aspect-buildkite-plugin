@@ -13,22 +13,26 @@ needs.
 ## Why
 
 On an Aspect Workflows runner, `aspect <task>` already wires itself into the
-runner's remote cache, BES backend, and local NVMe disk cache on its own. But
+runner's remote cache, repository cache, and local NVMe disk cache on its own. But
 many pipelines mix `aspect build` with a separate bare `bazel build` step, and
 without this plugin those bare `bazel` invocations would miss all of that.
 
 The plugin runs in the **`pre-command` hook** — after the repository checkout
-(so `rosetta` can read the workspace's `.bazelversion`) and before the step's
-command (so the rc is in place before any `bazel` call). It does three things:
+(so the rc generator can read the workspace's `.bazelversion`) and before the
+step's command (so the rc is in place before any `bazel` call). It does three
+things:
 
 1. **Logs the runner's metadata** (version, cloud, region, instance, …) for
    traceability.
 2. **Waits for the runner's cache warming to complete.** `aspect <task>` performs
    this wait itself; a raw `bazel` call would otherwise race the still-running
    bootstrap warming — competing for CPU/disk and missing the warmed caches.
-3. **Writes `/etc/bazel.bazelrc`** (the first rc Bazel loads) via the
-   runner-provided `rosetta bazelrc`, so raw `bazel` picks up the Workflows-tuned
-   configuration.
+3. **Generates a Bazel rc** so raw `bazel` picks up the Workflows-tuned
+   configuration. The preferred path is `aspect ci bazelrc`, which writes
+   `~/.bazelrc`. On older runners that still ship `rosetta`, it falls back to
+   `rosetta bazelrc` writing `/etc/bazel.bazelrc`. If neither is available, the
+   plugin warns (raw `bazel` calls won't be configured) but **does not fail the
+   build** — warming is done and `aspect <task>` steps are unaffected.
 
 It does **not** install `aspect`, `bazel`, or Bazelisk, and does not wire up any
 ephemeral-runner caching or auth — Buildkite runners are expected to be Aspect
@@ -76,15 +80,20 @@ Find the latest SHA on the [Releases page](https://github.com/aspect-build/setup
 None. The plugin's behavior is driven entirely by the runner's
 `ASPECT_WORKFLOWS_RUNNER_*` environment variables.
 
-## Deprecation signal
+## Degraded-configuration signal
 
-`rosetta` is a legacy mechanism that a future major Aspect Workflows release will
-remove. When the runner signals that a newer bazelrc-generation mechanism is
-available (`ASPECT_WORKFLOWS_RUNNER_BAZELRC_GENERATE` is set), or when `rosetta`
-is missing entirely, the plugin emits a warning and exports
+If neither `aspect ci bazelrc` (Aspect CLI `vX.Y.Z` or newer) nor the legacy
+`rosetta` fallback is available on the runner, the plugin cannot configure raw
+`bazel` calls. It emits a warning and exports
 `ASPECT_WORKFLOWS_BUILDKITE_PLUGIN_DEPRECATED=1` (via `$BUILDKITE_ENV_FILE`) so
-downstream `aspect <task>` steps can surface the same signal. If you see this,
-upgrade the plugin to the latest release.
+downstream `aspect <task>` steps can surface the same signal — but it does not
+fail the build. If you see this, upgrade the Aspect CLI on the runner image so it
+ships `aspect ci bazelrc`.
+
+<!-- TODO: replace vX.Y.Z with the first Aspect CLI release that ships `aspect ci bazelrc`. -->
+
+`rosetta` is the legacy generator that a future major Aspect Workflows release
+will remove; once it is gone, `aspect ci bazelrc` is the only path.
 
 ## Development
 
