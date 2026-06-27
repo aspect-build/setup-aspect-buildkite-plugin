@@ -1,0 +1,22 @@
+steps:
+  - label: ":shell: Tests"
+    plugins:
+      - plugin-tester#v1.3.0:
+          folders:
+            - tests
+
+  - label: ":sparkles: Lint"
+    plugins:
+      - plugin-linter#v3.3.0:
+          id: aspect-build/setup-aspect-buildkite-plugin
+          # README examples pin to a commit SHA (our security guidance), which
+          # the linter's "versions up-to-date" check flags as an invalid
+          # version. skip-invalid keeps that a non-failure.
+          skip-invalid: true
+
+  - label: ":shell: Shellcheck"
+    plugins:
+      - shellcheck#v1.4.0:
+          files:
+            - hooks/**
+            - lib/*.bash
