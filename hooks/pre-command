@@ -1,0 +1,183 @@
+#!/bin/bash
+#
+# Aspect Workflows Buildkite plugin — pre-command hook.
+#
+# On an Aspect Workflows runner, `aspect <task>` already routes through the
+# runner's caching infrastructure on its own. This plugin extends the same
+# treatment to *raw* `bazel <verb>` calls outside of `aspect <task>`:
+#
+#   1. Log the runner's identity for traceability.
+#   2. Wait for the runner's cache warming to complete — `aspect <task>` does
+#      this itself, but a raw `bazel` call would otherwise race the still-running
+#      bootstrap warming (competing for CPU/disk, missing the warmed caches).
+#   3. Generate a Bazel rc so raw `bazel` picks up the Workflows-tuned config
+#      (remote cache, repository cache, local NVMe disk cache). Preferred path is
+#      `aspect ci bazelrc` (writes ~/.bazelrc); on older runners that still ship
+#      `rosetta`, falls back to `rosetta bazelrc` into /etc/bazel.bazelrc.
+#
+# It runs as the `pre-command` hook, NOT `environment`. Both generators resolve
+# the Bazel version/flags relative to the job's working directory, so they must
+# run *after* the repository checkout. The `environment` hook runs before
+# checkout — there is no workspace yet. `pre-command` runs after checkout
+# (CWD = the checked-out workspace) and before the step's command, so the rc
+# exists and warming is done before any `bazel` call. This matches setup-aspect's
+# GitHub Action, which runs after actions/checkout.
+#
+# Buildkite runners are typically Aspect Workflows runners, but the plugin guards
+# on ASPECT_WORKFLOWS_RUNNER and no-ops gracefully when it is unset, so it is safe
+# to leave in a pipeline that occasionally runs elsewhere.
+#
+# This is a port of the Workflows-runner branch of aspect-build/setup-aspect
+# (setupOnWorkflowsRunner in index.js); the ephemeral-runner install/cache/auth
+# path is intentionally omitted.
+
+set -euo pipefail
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/shared.bash
+source "${DIR}/../lib/shared.bash"
+
+# Path of the system bazelrc written by the legacy `rosetta` fallback — the
+# first rc Bazel loads. Overridable for tests (writing the real path requires
+# root, which a test environment lacks).
+SYSTEM_BAZELRC="${ASPECT_WORKFLOWS_PLUGIN_SYSTEM_BAZELRC:-/etc/bazel.bazelrc}"
+
+# Minimum Aspect CLI version that ships `aspect ci bazelrc`. Surfaced in the
+# warning shown when neither the new command nor the legacy `rosetta` can
+# configure raw `bazel` calls.
+# TODO: pin once `aspect ci bazelrc` is released.
+ASPECT_CI_BAZELRC_MIN_VERSION="vX.Y.Z"
+
+# Block until the runner's cache warming completes, mirroring the Aspect CLI's
+# pre-task wait. Warming state is published by the runner agent: enabled when
+# ASPECT_WORKFLOWS_RUNNER_WARMING_ENABLED is set, complete when the marker file
+# named by ASPECT_WORKFLOWS_RUNNER_WARMING_COMPLETE_MARKER_FILE exists. The poll
+# has no timeout by design: if warming hits a critical error the bootstrap
+# terminates the runner (and this job with it), so the loop cannot hang.
+wait_for_warming() {
+  [[ -z "${ASPECT_WORKFLOWS_RUNNER_WARMING_ENABLED:-}" ]] && return 0
+
+  local marker="${ASPECT_WORKFLOWS_RUNNER_WARMING_COMPLETE_MARKER_FILE:-}"
+  if [[ -z "${marker}" ]]; then
+    warn "Warming is enabled on this runner but ASPECT_WORKFLOWS_RUNNER_WARMING_COMPLETE_MARKER_FILE is not set — unable to wait for warming to complete."
+    return 0
+  fi
+
+  if [[ ! -f "${marker}" ]]; then
+    echo "--- :aspect: Wait for runner cache warming to complete"
+    log "Warming is still in progress — waiting..."
+    local start elapsed
+    start="$(date +%s)"
+    while [[ ! -f "${marker}" ]]; do
+      sleep 1
+    done
+    elapsed=$(( $(date +%s) - start ))
+    log "Warming completed after ${elapsed}s"
+  fi
+
+  local version_file="${ASPECT_WORKFLOWS_RUNNER_WARMING_CACHE_VERSION_FILE:-}"
+  if [[ -n "${version_file}" && -f "${version_file}" ]]; then
+    local cache_version
+    cache_version="$(tr -d '[:space:]' < "${version_file}")"
+    [[ -n "${cache_version}" ]] && log "Runner warmed from cache version: ${cache_version}"
+  fi
+}
+
+# Preferred generator: `aspect ci bazelrc`.
+#
+# Writes ~/.bazelrc (the first user rc Bazel loads) with the runner's remote
+# cache, repository cache, and output flags — the same flags `aspect <task>`
+# injects. It reads the runner's environment, not a Workflows config, so no
+# throwaway config or `.bazelversion` plumbing is needed. Returns the command's
+# exit code; non-zero means the CLI is too old to ship the subcommand (or it
+# genuinely failed), in which case the caller falls back to `rosetta`.
+aspect_ci_bazelrc() {
+  command -v aspect > /dev/null 2>&1 || return 127
+  echo "--- :aspect: Generate ~/.bazelrc via \`aspect ci bazelrc\`"
+  aspect ci bazelrc
+}
+
+# Legacy fallback generator: `rosetta bazelrc` → ${SYSTEM_BAZELRC}.
+#
+# `rosetta bazelrc` reads .aspect/workflows/config.yaml by default and fails if
+# that file is absent or unreadable. We only need the generated rc, not a real
+# Workflows config, so point it at a throwaway config. The schema requires a
+# non-empty task list, so define a single placeholder task.
+#
+# `rosetta bazelrc` resolves the Bazel version from the workspace's
+# `.bazelversion` and platform flags relative to CWD, so this must run after the
+# repo checkout (hence the pre-command hook — see the file header).
+#
+# rosetta's stdout (the rc content) is captured to a temp file and only moved
+# into place once rosetta exits 0. We never redirect straight into
+# ${SYSTEM_BAZELRC}: that would truncate it before rosetta runs and, on failure,
+# leave a half-written or empty system rc that silently misconfigures every
+# later `bazel` call.
+#
+# `rosetta bazelrc` resolves the Bazel version from the workspace's
+# `.bazelversion` with no fallback (no default, no env var, no bazelisk
+# resolution): a missing file is fatal (ExitCode.ERROR / 200). We pre-flight that
+# check so the failure is an actionable message instead of an opaque rosetta exit
+# code. CWD is the checked-out workspace root (the pre-command hook runs after
+# checkout), which is also where the step's later `bazel` calls run.
+rosetta_bazelrc() {
+  command -v rosetta > /dev/null 2>&1 || return 127
+  echo "--- :aspect: Write ${SYSTEM_BAZELRC} via \`rosetta bazelrc\`"
+
+  if [[ ! -f .bazelversion ]]; then
+    warn "No .bazelversion file in $(pwd). \`rosetta bazelrc\` resolves the Bazel version from .bazelversion and has no fallback, so it cannot generate a bazelrc here. Commit a .bazelversion to the repo (the same file Bazelisk reads), or apply this plugin only to steps whose working directory contains one."
+    return 1
+  fi
+
+  local work_dir
+  work_dir="$(mktemp -d "${TMPDIR:-/tmp}/aspect-workflows-rosetta-XXXXXX")"
+  # shellcheck disable=SC2064  # expand work_dir now, at trap-install time.
+  trap "rm -rf '${work_dir}'" RETURN
+
+  printf 'tasks:\n  - warming:\n' > "${work_dir}/config.yaml"
+
+  local rc_out="${work_dir}/bazel.bazelrc" status=0
+  rosetta bazelrc --config "${work_dir}/config.yaml" > "${rc_out}" || status=$?
+  if [[ "${status}" -ne 0 ]]; then
+    warn "\`rosetta bazelrc\` failed (exit ${status}); see its error above. ${SYSTEM_BAZELRC} was left unchanged."
+    return "${status}"
+  fi
+
+  cat "${rc_out}" > "${SYSTEM_BAZELRC}"
+  log "Wrote Workflows-tuned bazelrc to ${SYSTEM_BAZELRC}"
+}
+
+# Configure raw `bazel` calls: prefer `aspect ci bazelrc`, fall back to the
+# legacy `rosetta bazelrc` on older runners. If neither can run, warn — but do
+# NOT fail the build: warming has already completed and `aspect <task>` steps
+# still work; only raw `bazel` calls go unconfigured.
+write_bazelrc() {
+  if aspect_ci_bazelrc; then
+    return 0
+  fi
+
+  if rosetta_bazelrc; then
+    return 0
+  fi
+
+  mark_deprecated "Could not configure raw \`bazel\` calls on this Workflows runner: \`aspect ci bazelrc\` is unavailable (Aspect CLI ${ASPECT_CI_BAZELRC_MIN_VERSION} or newer is required) and the legacy \`rosetta\` fallback is not on PATH. Warming completed and \`aspect <task>\` steps are unaffected, but raw \`bazel\` calls will not pick up the runner's remote cache, repository cache, or disk cache and so will not function correctly. Upgrade the Aspect CLI on the runner image to ${ASPECT_CI_BAZELRC_MIN_VERSION}+."
+  return 0
+}
+
+main() {
+  if [[ -z "${ASPECT_WORKFLOWS_RUNNER:-}" ]]; then
+    log "Not an Aspect Workflows runner (ASPECT_WORKFLOWS_RUNNER unset) — skipping Aspect Workflows setup."
+    return 0
+  fi
+
+  log "Detected Aspect Workflows runner (ASPECT_WORKFLOWS_RUNNER set)"
+
+  echo "--- :aspect: Workflows runner metadata"
+  log_workflows_runner_metadata
+
+  wait_for_warming
+
+  write_bazelrc
+}
+
+main "$@"
