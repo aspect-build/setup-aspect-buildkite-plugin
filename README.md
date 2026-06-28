@@ -82,15 +82,14 @@ None. The plugin's behavior is driven entirely by the runner's
 
 ## Degraded-configuration signal
 
-If neither `aspect ci bazelrc` (Aspect CLI `vX.Y.Z` or newer) nor the legacy
-`rosetta` fallback is available on the runner, the plugin cannot configure raw
-`bazel` calls. It emits a warning and exports
-`ASPECT_WORKFLOWS_BUILDKITE_PLUGIN_DEPRECATED=1` (via `$BUILDKITE_ENV_FILE`) so
-downstream `aspect <task>` steps can surface the same signal — but it does not
-fail the build. If you see this, upgrade the Aspect CLI on the runner image so it
-ships `aspect ci bazelrc`.
-
-<!-- TODO: replace vX.Y.Z with the first Aspect CLI release that ships `aspect ci bazelrc`. -->
+If `aspect ci bazelrc` is unavailable (the Aspect CLI on the runner predates the
+`ci` command group) the plugin falls back to the legacy `rosetta bazelrc`. If
+neither is available, the plugin cannot configure raw `bazel` calls: it emits a
+warning and exports `ASPECT_WORKFLOWS_BUILDKITE_PLUGIN_DEPRECATED=1` (via
+`$BUILDKITE_ENV_FILE`) so downstream `aspect <task>` steps can surface the same
+signal — but it does not fail the build. If you see this, upgrade the Aspect CLI
+on the runner image to pick up the `ci` command:
+https://github.com/aspect-build/aspect-cli/releases.
 
 `rosetta` is the legacy generator that a future major Aspect Workflows release
 will remove; once it is gone, `aspect ci bazelrc` is the only path.
