@@ -83,10 +83,10 @@ None. The plugin's behavior is driven entirely by the runner's
 ## Degraded-configuration signal
 
 If `aspect ci bazelrc` is unavailable (the runner's Aspect CLI is older than
-`v2026.26.37`, which first shipped the command) the plugin falls back to the
+`v2026.26.38`, which first shipped the command) the plugin falls back to the
 legacy `rosetta bazelrc`. If neither is available, the plugin cannot configure
 vanilla `bazel` calls: it emits a warning — but it does not fail the build. If
-you see this, upgrade the Aspect CLI on the runner image to `v2026.26.37` or
+you see this, upgrade the Aspect CLI on the runner image to `v2026.26.38` or
 newer: https://github.com/aspect-build/aspect-cli/releases.
 
 `rosetta` is the legacy generator that a future major Aspect Workflows release
