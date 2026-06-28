@@ -1,14 +1,8 @@
 #!/bin/bash
 #
-# Shared helpers for the Aspect Workflows Buildkite plugin: logging, the
-# deprecation signal, cross-step env propagation, and the runner-metadata
-# table. Ported from the Workflows-runner branch of aspect-build/setup-aspect
-# (index.js). Sourced by hooks/environment.
-
-# The env var the plugin exports (and downstream `aspect <task>` steps can read)
-# when this plugin detects it is out of date on the current Workflows runner.
-# Buildkite analogue of setup-aspect's SETUP_ASPECT_GITHUB_ACTION_DEPRECATED.
-readonly DEPRECATED_ENV_VAR="ASPECT_WORKFLOWS_BUILDKITE_PLUGIN_DEPRECATED"
+# Shared helpers for the Aspect Workflows Buildkite plugin: logging and the
+# runner-metadata table. Ported from the Workflows-runner branch of
+# aspect-build/setup-aspect (index.js). Sourced by hooks/environment.
 
 # Plain informational line on stdout. Callers wrap related output in Buildkite
 # log groups with `echo "--- :aspect: ..."` / `echo "+++ ..."` directly.
@@ -21,27 +15,6 @@ log() {
 # easy to assert against in tests.
 warn() {
   echo "⚠️  $*" >&2
-}
-
-# Export NAME=VALUE for the current hook process *and*, when Buildkite provides
-# one, append it to $BUILDKITE_ENV_FILE so the value propagates to later steps in
-# the same job. This is Buildkite's documented per-job env-propagation mechanism
-# and the analogue of GitHub Actions' core.exportVariable / $GITHUB_ENV.
-export_env() {
-  local name="$1" value="$2"
-  export "${name}=${value}"
-  if [[ -n "${BUILDKITE_ENV_FILE:-}" ]]; then
-    echo "${name}=${value}" >> "${BUILDKITE_ENV_FILE}"
-  fi
-}
-
-# Emit a deprecation warning and export DEPRECATED_ENV_VAR=1 so downstream
-# `aspect <task>` invocations can surface the same signal on their own status
-# surfaces (task summaries, BES reports) without users scrolling back to this
-# plugin's output. Mirrors setup-aspect's markActionDeprecated.
-mark_deprecated() {
-  warn "$1"
-  export_env "${DEPRECATED_ENV_VAR}" "1"
 }
 
 # Render the `1`/unset boolean runner flags as yes/no, matching the Aspect CLI's
