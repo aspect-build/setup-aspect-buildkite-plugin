@@ -25,13 +25,13 @@ things:
 1. **Logs the runner's metadata** (version, cloud, region, instance, …) for
    traceability.
 2. **Waits for the runner's cache warming to complete.** `aspect <task>` performs
-   this wait itself; a raw `bazel` call would otherwise race the still-running
+   this wait itself; a vanilla `bazel` call would otherwise race the still-running
    bootstrap warming — competing for CPU/disk and missing the warmed caches.
-3. **Generates a Bazel rc** so raw `bazel` picks up the Workflows-tuned
+3. **Generates a Bazel rc** so vanilla `bazel` picks up the Workflows-tuned
    configuration. The preferred path is `aspect ci bazelrc`, which writes
    `~/.bazelrc`. On older runners that still ship `rosetta`, it falls back to
    `rosetta bazelrc` writing `/etc/bazel.bazelrc`. If neither is available, the
-   plugin warns (raw `bazel` calls won't be configured) but **does not fail the
+   plugin warns (vanilla `bazel` calls won't be configured) but **does not fail the
    build** — warming is done and `aspect <task>` steps are unaffected.
 
 It does **not** install `aspect`, `bazel`, or Bazelisk, and does not wire up any
@@ -84,7 +84,7 @@ None. The plugin's behavior is driven entirely by the runner's
 
 If `aspect ci bazelrc` is unavailable (the Aspect CLI on the runner predates the
 `ci` command group) the plugin falls back to the legacy `rosetta bazelrc`. If
-neither is available, the plugin cannot configure raw `bazel` calls: it emits a
+neither is available, the plugin cannot configure vanilla `bazel` calls: it emits a
 warning and exports `ASPECT_WORKFLOWS_BUILDKITE_PLUGIN_DEPRECATED=1` (via
 `$BUILDKITE_ENV_FILE`) so downstream `aspect <task>` steps can surface the same
 signal — but it does not fail the build. If you see this, upgrade the Aspect CLI

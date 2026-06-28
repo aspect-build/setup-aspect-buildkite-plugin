@@ -8,9 +8,9 @@
 #
 #   1. Log the runner's identity for traceability.
 #   2. Wait for the runner's cache warming to complete — `aspect <task>` does
-#      this itself, but a raw `bazel` call would otherwise race the still-running
+#      this itself, but a vanilla `bazel` call would otherwise race the still-running
 #      bootstrap warming (competing for CPU/disk, missing the warmed caches).
-#   3. Generate a Bazel rc so raw `bazel` picks up the Workflows-tuned config
+#   3. Generate a Bazel rc so vanilla `bazel` picks up the Workflows-tuned config
 #      (remote cache, repository cache, local NVMe disk cache). Preferred path is
 #      `aspect ci bazelrc` (writes ~/.bazelrc); on older runners that still ship
 #      `rosetta`, falls back to `rosetta bazelrc` into /etc/bazel.bazelrc.
@@ -166,10 +166,10 @@ rosetta_bazelrc() {
   print_bazelrc "${SYSTEM_BAZELRC}"
 }
 
-# Configure raw `bazel` calls: prefer `aspect ci bazelrc`, fall back to the
+# Configure vanilla `bazel` calls: prefer `aspect ci bazelrc`, fall back to the
 # legacy `rosetta bazelrc` on older runners. If neither can run, warn — but do
 # NOT fail the build: warming has already completed and `aspect <task>` steps
-# still work; only raw `bazel` calls go unconfigured.
+# still work; only vanilla `bazel` calls go unconfigured.
 write_bazelrc() {
   if aspect_ci_bazelrc; then
     return 0

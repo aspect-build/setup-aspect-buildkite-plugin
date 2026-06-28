@@ -1,5 +1,5 @@
 name: Aspect Workflows
-description: Prepares Aspect Workflows runners for raw `bazel` calls — waits for cache warming and generates /etc/bazel.bazelrc.
+description: Prepares Aspect Workflows runners for vanilla `bazel` calls — waits for cache warming and generates a Bazel rc.
 author: https://github.com/aspect-build
 requirements:
   - bash
