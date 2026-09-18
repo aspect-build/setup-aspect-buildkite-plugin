@@ -28,9 +28,8 @@ things:
    this wait itself; a vanilla `bazel` call would otherwise race the still-running
    bootstrap warming — competing for CPU/disk and missing the warmed caches.
 3. **Generates a Bazel rc** so vanilla `bazel` picks up the Workflows-tuned
-   configuration. The preferred path is `aspect ci bazelrc`, which writes
-   `~/.bazelrc`. On older runners that still ship `rosetta`, it falls back to
-   `rosetta bazelrc` writing `/etc/bazel.bazelrc`. If neither is available, the
+   configuration, via `aspect setup bazelrc`, which writes `~/.bazelrc`. On
+   older runners whose CLI predates that task there is a legacy fallback. If neither is available, the
    plugin warns (vanilla `bazel` calls won't be configured) but **does not fail the
    build** — warming is done and `aspect <task>` steps are unaffected.
 
@@ -82,15 +81,15 @@ None. The plugin's behavior is driven entirely by the runner's
 
 ## Degraded-configuration signal
 
-If `aspect ci bazelrc` is unavailable (the runner's Aspect CLI is older than
-`v2026.26.44`, the minimum supported version of the `aspect ci` commands) the
-plugin falls back to the legacy `rosetta bazelrc`. If neither is available, the plugin cannot configure
+If the Aspect CLI has no bazelrc task under either name (older than
+`v2026.26.44`, before the task existed at all) the plugin falls back to the
+legacy `rosetta bazelrc`. If neither is available, the plugin cannot configure
 vanilla `bazel` calls: it emits a warning — but it does not fail the build. If
-you see this, upgrade the Aspect CLI on the runner image to `v2026.26.44` or
+you see this, upgrade the Aspect CLI on the runner image to `v2026.38.10` or
 newer: https://github.com/aspect-build/aspect-cli/releases.
 
 `rosetta` is the legacy generator that a future major Aspect Workflows release
-will remove; once it is gone, `aspect ci bazelrc` is the only path.
+will remove; once it is gone, `aspect setup bazelrc` is the only path.
 
 ## Development
 
