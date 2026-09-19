@@ -1,11 +1,15 @@
-name: Aspect Workflows
-description: Prepares Aspect Workflows runners for vanilla `bazel` calls — waits for cache warming and generates a Bazel rc.
+name: Setup Aspect
+description: Points vanilla `bazel` calls at an Aspect remote cache — on any agent, or at the runner's own caches on Aspect Workflows runners.
 author: https://github.com/aspect-build
 requirements:
   - bash
+  - curl
 configuration:
-  # v1 behavior is driven entirely by the runner's ASPECT_WORKFLOWS_RUNNER_* env
-  # vars, so there are no configuration options yet. The empty-but-closed schema
-  # keeps the plugin forward-compatible: future tunables slot in here.
+  # Behavior is driven by the environment rather than by plugin config: the
+  # runner's ASPECT_WORKFLOWS_RUNNER_* vars pick the branch, ASPECT_API_TOKEN
+  # supplies the credentials, and ASPECT_LAUNCHER_VERSION pins the launcher.
+  # Secrets do not belong in pipeline YAML, which is why the token is read from
+  # the environment and not exposed here. The empty-but-closed schema keeps the
+  # plugin forward-compatible: future tunables slot in here.
   properties: {}
   additionalProperties: false

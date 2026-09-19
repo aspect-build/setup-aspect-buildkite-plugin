@@ -1,43 +1,67 @@
-# Aspect Workflows Buildkite plugin
+# Setup Aspect Buildkite plugin
 
-A [Buildkite plugin](https://buildkite.com/docs/plugins) that prepares an
-[Aspect Workflows](https://docs.aspect.build/workflows) runner so that **raw
-`bazel <verb>` calls** — not just `aspect <task>` — route through the runner's
-caching infrastructure.
+A [Buildkite plugin](https://buildkite.com/docs/plugins) that sets a step up so
+that **raw `bazel <verb>` calls** — not just `aspect <task>` — reach an Aspect
+cache.
 
 This is the Buildkite counterpart of the
 [`aspect-build/setup-aspect`](https://github.com/aspect-build/setup-aspect)
-GitHub Action, ported down to just the work that an Aspect Workflows runner
-needs.
-
-## Why
-
-On an Aspect Workflows runner, `aspect <task>` already wires itself into the
-runner's remote cache, repository cache, and local NVMe disk cache on its own. But
-many pipelines mix `aspect build` with a separate bare `bazel build` step, and
-without this plugin those bare `bazel` invocations would miss all of that.
+GitHub Action.
 
 The plugin runs in the **`pre-command` hook** — after the repository checkout
 (so the rc generator can read the workspace's `.bazelversion`) and before the
-step's command (so the rc is in place before any `bazel` call). It does three
-things:
+step's command (so the rc is in place before any `bazel` call).
 
-1. **Logs the runner's metadata** (version, cloud, region, instance, …) for
-   traceability.
-2. **Waits for the runner's cache warming to complete.** `aspect <task>` performs
-   this wait itself; a vanilla `bazel` call would otherwise race the still-running
+## Two modes
+
+The setup looks at `ASPECT_WORKFLOWS_RUNNER` and takes one of two paths.
+
+### On any Buildkite agent — the Aspect remote cache
+
+This is the path that lets an existing pipeline try Aspect without moving to
+Aspect Workflows runners. It:
+
+1. **Installs the Aspect CLI launcher and Bazelisk**, each skipped when the
+   binary is already on `PATH`. The launcher reads `.aspect/version.axl` from
+   your repository and fetches the matching CLI on first use, so the CLI version
+   stays pinned by the repo; `ASPECT_LAUNCHER_VERSION` pins only the launcher.
+2. **Authenticates** with `aspect auth login --with-api-token` when
+   `ASPECT_API_TOKEN` is set. The token is piped on stdin — never an argument —
+   and the short-lived JWT the CLI persists is what later `aspect` calls and the
+   Bazel credential helper use.
+3. **Writes `~/.bazelrc`** with `aspect setup bazelrc --home`, pointing vanilla
+   `bazel` at the Aspect deployment's remote cache and BES. A plain
+   `bazel build //...` then shares a cache with every other job and branch and
+   streams the build to Aspect; `aspect build --remote //...` reaches the same
+   deployment.
+
+`--home` is what keeps the rc out of the checkout. Without it the task writes
+`<workspace>/.aspect/bazelrc` and a `try-import` in the workspace `.bazelrc` —
+files meant to be committed, not generated on a runner and thrown away with it.
+
+### On an Aspect Workflows runner — the runner's own caches
+
+`aspect <task>` already wires itself into the runner's remote cache, BES
+backend, and local NVMe disk cache. Steps that call `bazel` directly would otherwise miss all of
+that, so the setup:
+
+1. **Logs the runner's metadata** for traceability.
+2. **Waits for cache warming to complete.** `aspect <task>` performs this wait
+   itself; a vanilla `bazel` call would otherwise race the still-running
    bootstrap warming — competing for CPU/disk and missing the warmed caches.
-3. **Generates a Bazel rc** so vanilla `bazel` picks up the Workflows-tuned
-   configuration, via `aspect setup bazelrc`, which writes `~/.bazelrc`. On
-   older runners whose CLI predates that task there is a legacy fallback. If neither is available, the
-   plugin warns (vanilla `bazel` calls won't be configured) but **does not fail the
-   build** — warming is done and `aspect <task>` steps are unaffected.
+3. **Authenticates**, as above.
+4. **Generates the runner's Bazel rc** via `aspect setup bazelrc`, with a legacy
+   fallback for runners whose CLI predates that task. If neither is available it
+   warns but **does not fail the build** — warming is done and `aspect <task>`
+   steps are unaffected.
 
-It does **not** install `aspect`, `bazel`, or Bazelisk, and does not wire up any
-ephemeral-runner caching or auth — Buildkite runners are expected to be Aspect
-Workflows runners, which already ship those. On a non-Workflows runner the plugin
-**no-ops gracefully** (logs a skip message and exits 0), so it is safe to leave in
-a pipeline that occasionally runs elsewhere.
+## Authentication
+
+Set `ASPECT_API_TOKEN` to a long-lived `<CLIENT_ID>:<SECRET>` Aspect API token,
+from a Buildkite secret or an agent environment hook — not from pipeline YAML. Without it the rc is still written — the task defaults to the
+Aspect Cloud deployment and needs no login — but Bazel will reach that cache
+unauthenticated.
+
 
 ## Usage
 
