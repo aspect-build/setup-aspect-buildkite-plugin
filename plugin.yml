@@ -1,11 +1,78 @@
-name: Aspect Workflows
-description: Prepares Aspect Workflows runners for vanilla `bazel` calls — waits for cache warming and generates a Bazel rc.
+name: Setup Aspect
+description: Buildkite plugin that installs the Aspect CLI launcher, installs Bazelisk (skipped automatically if `bazel` is already on PATH), points Bazel at Aspect Cloud's remote cache and BES, and authenticates with the Aspect API — all in one step.
 author: https://github.com/aspect-build
 requirements:
   - bash
+  - curl
 configuration:
-  # v1 behavior is driven entirely by the runner's ASPECT_WORKFLOWS_RUNNER_* env
-  # vars, so there are no configuration options yet. The empty-but-closed schema
-  # keeps the plugin forward-compatible: future tunables slot in here.
-  properties: {}
+  # Credentials and versions stay in the environment: the runner's
+  # ASPECT_WORKFLOWS_RUNNER_* vars pick the branch, ASPECT_API_TOKEN supplies
+  # the credentials, ASPECT_LAUNCHER_VERSION pins the launcher. Secrets do not
+  # belong in pipeline YAML, which is why the token is not exposed here.
+  #
+  # What is exposed is the rc task's own flags. Each is unset by default, and
+  # unset is not a default value: leaving a flag off the command line is what
+  # lets the CLI apply its own `auto`, which already detects the runner and the
+  # CI host.
+  properties:
+    bazelrc-generate:
+      type: boolean
+      description: |
+        Whether to write ~/.aspect/bazelrc, and the `try-import` for it in
+        ~/.bazelrc, by running `aspect setup bazelrc`. On by default.
+
+        That rc is what makes a plain `bazel build //...` read and write a
+        cache shared across jobs and branches, and stream the build to Aspect,
+        without the pipeline configuring anything else. The deployment
+        defaults to Aspect Cloud; set ASPECT_API_TOKEN so Bazel can
+        authenticate to it, which is also what the task looks for before
+        enabling those endpoints at all.
+
+        Set to `false` if you configure Bazel yourself, or to keep this plugin
+        from touching ~/.bazelrc; the launcher and Bazelisk installs, the
+        login, and the warming wait on a Workflows runner all still happen,
+        which is what makes this different from dropping the plugin. `aspect
+        <task>` steps are unaffected either way, since a task configures its
+        own Bazel invocation.
+
+        On an Aspect Workflows runner the same two files hold that runner's
+        own services rather than a deployment's, and `false` skips them there
+        too — `aspect <task>` still reaches those services, a vanilla `bazel`
+        call no longer would.
+    bazelrc-remote:
+      type: string
+      description: |
+        Which of the deployment's remote endpoints the generated
+        ~/.aspect/bazelrc turns on, passed to `aspect setup bazelrc` as
+        `--remote=<value>`. Unset by default, which leaves the CLI's own
+        `auto`: the remote cache and BES on CI, and nothing off it.
+
+        Same grammar as `aspect build --remote`. `exec` adds remote execution,
+        which is never automatic. `no-cache` / `no-bes` / `no-exec` subtract,
+        so `no-bes` is the cache alone. `none` enables nothing. `auto` is the
+        default spelled out.
+    bazelrc-home:
+      type: string
+      enum: ["auto", "true", "false"]
+      description: |
+        Which rc `aspect setup bazelrc` writes, passed as `--home=<value>`.
+        Unset by default, which leaves the CLI's own `auto`: the machine's rc
+        under ~/.aspect on CI, and the checkout's off it.
+
+        `false` writes the checkout's <workspace>/.aspect/bazelrc and a
+        `try-import` into the repository's .bazelrc instead — files meant to
+        be committed, so this is for a step whose purpose is regenerating
+        them. `true` forces the machine's rc.
+    bazelrc-force:
+      type: boolean
+      description: |
+        Regenerate ~/.aspect/bazelrc even if one is already there, passing
+        `--force`. Off by default, because the CLI keeps an existing rc: the
+        checkout's is the repository's to edit, and the machine's may belong
+        to a agent someone set up by hand.
+
+        Worth turning on for a persistent self-hosted agent, whose home
+        directory survives between jobs and would otherwise keep the file
+        written by the first job on it. An ephemeral agent starts clean, so
+        this changes nothing there.
   additionalProperties: false
