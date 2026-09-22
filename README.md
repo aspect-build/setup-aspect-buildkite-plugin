@@ -175,7 +175,7 @@ If the Aspect CLI has no bazelrc task under either name (older than
 `v2026.26.44`, before the task existed at all) the plugin falls back to the
 legacy `rosetta bazelrc`. If neither is available, the plugin cannot configure
 vanilla `bazel` calls: it emits a warning — but it does not fail the build. If
-you see this, upgrade the Aspect CLI on the runner image to `v2026.38.30` or
+you see this, upgrade the Aspect CLI on the runner image to `v2026.38.34` or
 newer: https://github.com/aspect-build/aspect-cli/releases.
 
 `rosetta` is the legacy generator that a future major Aspect Workflows release
